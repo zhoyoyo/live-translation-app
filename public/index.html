@@ -292,14 +292,14 @@
         // ==============================================
         const AUDIO_CONFIG = {
             MAX_CHUNK_DURATION: 6000,    // Maximum chunk length in milliseconds (6 seconds)
-            SILENCE_THRESHOLD: 500,      // Silence duration to trigger chunk in milliseconds (500ms)
+            SILENCE_THRESHOLD: 700,      // Silence duration to trigger chunk in milliseconds (700ms) - INCREASED
             VOLUME_THRESHOLD: 15,        // Audio level threshold (0-255, higher = louder sounds required) - MUCH HIGHER
             MIN_CHUNK_DURATION: 1000,    // Minimum chunk duration before silence detection kicks in (1 second)
             
             // Audio content detection thresholds
-            MIN_AVERAGE_VOLUME: 0.02,    // Minimum average audio level (0-1)
-            MIN_PEAK_VOLUME: 0.15,       // Minimum peak audio level (0-1)
-            MIN_ACTIVE_SAMPLES: 5.0      // Minimum percentage of samples above noise floor
+            MIN_AVERAGE_VOLUME: 0.005,    // Minimum average audio level (0-1)
+            MIN_PEAK_VOLUME: 0.08,       // Minimum peak audio level (0-1)
+            MIN_ACTIVE_SAMPLES: 2.0      // Minimum percentage of samples above noise floor
         };
         // ==============================================
 
@@ -494,9 +494,11 @@
                 try {
                     const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
                     
+                    console.log('🔍 Analyzing audio content before API call...');
+                    
                     // Check if audio has sufficient volume before sending to API
                     if (!(await this.hasAudioContent(audioBlob))) {
-                        console.log('No significant audio detected, skipping API call');
+                        console.log('🔇 No significant audio detected, SKIPPING Whisper API call - saving costs!');
                         this.audioChunks = [];
                         
                         if (this.isRecording) {
@@ -507,10 +509,13 @@
                         return;
                     }
                     
+                    console.log('🎵 Audio content detected, proceeding with Whisper API call');
+                    
                     const arrayBuffer = await audioBlob.arrayBuffer();
                     const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
                     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        console.log('📤 Sending audio to server for Whisper processing...');
                         this.ws.send(JSON.stringify({
                             type: 'audio_chunk',
                             audio: base64Audio,
@@ -580,46 +585,47 @@
                                 const hasSignificantVolume = averageVolume > AUDIO_CONFIG.MIN_AVERAGE_VOLUME;
                                 const hasPeakVolume = maxVolume > AUDIO_CONFIG.MIN_PEAK_VOLUME;
                                 const hasActiveContent = percentageAboveNoise > AUDIO_CONFIG.MIN_ACTIVE_SAMPLES;
-                                const hasSpeechCharacteristics = rmsVolume > 0.03 && dynamicRange > 0.02;
-                                const hasMinimumDuration = duration > 0.5; // At least half a second of audio
+                                const hasSpeechCharacteristics = rmsVolume > 0.015 && dynamicRange > 0.01;
+                                const hasMinimumDuration = duration > 0.3; // At least half a second of audio
                                 
                                 // Require multiple criteria to be met
-                                const hasContent = hasSignificantVolume && 
-                                                 hasPeakVolume && 
-                                                 hasActiveContent && 
-                                                 hasSpeechCharacteristics &&
-                                                 hasMinimumDuration;
+                                const passedCriteria = [hasSignificantVolume, hasPeakVolume, hasActiveContent, hasSpeechCharacteristics, hasMinimumDuration].filter(Boolean).length;
+                                const hasContent = passedCriteria >= 3;
                                 
-                                console.log(`🎵 Audio Analysis:
-                                    Duration: ${duration.toFixed(2)}s
-                                    Avg Volume: ${averageVolume.toFixed(6)} (need >${AUDIO_CONFIG.MIN_AVERAGE_VOLUME})
-                                    Peak Volume: ${maxVolume.toFixed(4)} (need >${AUDIO_CONFIG.MIN_PEAK_VOLUME})
-                                    RMS Volume: ${rmsVolume.toFixed(6)}
-                                    Active Samples: ${percentageAboveNoise.toFixed(2)}% (need >${AUDIO_CONFIG.MIN_ACTIVE_SAMPLES}%)
-                                    Dynamic Range: ${dynamicRange.toFixed(6)}
-                                    ✓ Volume: ${hasSignificantVolume}
-                                    ✓ Peak: ${hasPeakVolume}
-                                    ✓ Active: ${hasActiveContent}
-                                    ✓ Speech: ${hasSpeechCharacteristics}
-                                    ✓ Duration: ${hasMinimumDuration}
-                                    → HAS CONTENT: ${hasContent}`);
+                                // Log detailed analysis when content is REJECTED
+                                if (!hasContent) {
+                                    console.log(`🔍 Audio analysis - REJECTED (${passedCriteria}/5 criteria passed, need 3):
+                                        Duration: ${duration.toFixed(2)}s
+                                        Avg Volume: ${averageVolume.toFixed(6)} (need >${AUDIO_CONFIG.MIN_AVERAGE_VOLUME}) ${hasSignificantVolume ? '✅' : '❌'}
+                                        Peak Volume: ${maxVolume.toFixed(4)} (need >${AUDIO_CONFIG.MIN_PEAK_VOLUME}) ${hasPeakVolume ? '✅' : '❌'}
+                                        RMS Volume: ${rmsVolume.toFixed(6)}
+                                        Active Samples: ${percentageAboveNoise.toFixed(2)}% (need >${AUDIO_CONFIG.MIN_ACTIVE_SAMPLES}%) ${hasActiveContent ? '✅' : '❌'}
+                                        Dynamic Range: ${dynamicRange.toFixed(6)}
+                                        Speech Characteristics: ${hasSpeechCharacteristics ? '✅' : '❌'}
+                                        Duration Check: ${hasMinimumDuration ? '✅' : '❌'}
+                                        → REASON: ${!hasSignificantVolume ? 'Low average volume' : 
+                                                   !hasPeakVolume ? 'Low peak volume' : 
+                                                   !hasActiveContent ? 'Not enough active samples' : 
+                                                   !hasSpeechCharacteristics ? 'No speech characteristics' : 
+                                                   !hasMinimumDuration ? 'Too short duration' : 'Unknown'}`);
+                                }
                                 
                                 audioContext.close();
                                 resolve(hasContent);
                             } catch (error) {
-                                console.log('❌ Audio analysis failed, rejecting to prevent hallucination:', error);
+                                console.log('🚫 Audio analysis FAILED - Rejecting to prevent hallucination:', error.message);
                                 resolve(false);
                             }
                         };
                         
                         fileReader.onerror = () => {
-                            console.log('❌ FileReader error, rejecting to prevent hallucination');
+                            console.log('🚫 FileReader ERROR - Rejecting to prevent hallucination');
                             resolve(false);
                         };
                         
                         fileReader.readAsArrayBuffer(audioBlob);
                     } catch (error) {
-                        console.log('❌ Audio context creation failed, rejecting to prevent hallucination:', error);
+                        console.log('🚫 Audio context FAILED - Rejecting to prevent hallucination:', error.message);
                         resolve(false);
                     }
                 });

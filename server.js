@@ -6,7 +6,6 @@ const WebSocket = require('ws');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
 const OpenAI = require('openai');
 
 const app = express();
@@ -14,10 +13,6 @@ const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Initialize APIs
-if (!process.env.GOOGLE_API_KEY) {
-  throw new Error('GOOGLE_API_KEY environment variable is required');
-}
-
 if (!process.env.OPENAI_API_KEY) {
   throw new Error('OPENAI_API_KEY environment variable is required');
 }
@@ -104,18 +99,17 @@ async function handleAudioChunk(ws, data) {
           translations: result.translations
         }));
       } else {
-        console.log('Unsupported language detected or translation failed. Ignoring transcription.');
+        console.log('🚫 API call made but translation REJECTED - Unsupported language detected or translation failed.');
       }
     } else {
-      // Don't send anything if transcription is invalid or empty
-      console.log('No valid speech detected in audio chunk');
+      console.log('🚫 API call made but transcription REJECTED - No valid speech detected or filtered out as hallucination');
     }
     
     // Clean up temporary file
     fs.unlinkSync(tempFilePath);
     
   } catch (error) {
-    console.error('Audio processing error:', error);
+    console.error('❌ Audio processing error:', error);
     ws.send(JSON.stringify({
       type: 'error',
       message: 'Failed to process audio'
@@ -310,37 +304,34 @@ function isValidTranscription(text) {
   return true;
 }
 
-// Translate text to target languages using direct HTTP API
+// Translate text to target languages using OpenAI API
 async function translateText(text, sourceLanguage = 'auto') {
   const translations = {};
   let detectedLanguage = sourceLanguage;
   
-  // First, get the detected language by making one translation call
+  // First, detect the language using OpenAI
   try {
-    const result = await callGoogleTranslateAPI(text, sourceLanguage, 'en');
-    if (result.detectedSourceLanguage) {
-      const normalizedLang = normalizeLanguageCode(result.detectedSourceLanguage);
-      if (!isSupportedLanguage(normalizedLang)) {
-        console.log(`Unsupported language detected: ${result.detectedSourceLanguage} (normalized: ${normalizedLang}). Skipping translation.`);
-        return null;
-      }
-      detectedLanguage = result.detectedSourceLanguage;
+    const languageDetection = await detectLanguageWithOpenAI(text);
+    if (!languageDetection || !isSupportedLanguage(normalizeLanguageCode(languageDetection))) {
+      console.log(`Unsupported language detected: ${languageDetection}. Skipping translation.`);
+      return null;
     }
+    detectedLanguage = languageDetection;
   } catch (error) {
-    console.error('Error detecting language:', error);
+    console.error('Error detecting language with OpenAI:', error);
     return null;
   }
   
-  // Now translate to all target languages
+  // Now translate to all target languages using OpenAI
   for (const targetLang of TARGET_LANGUAGES) {
     try {
       if (normalizeLanguageCode(detectedLanguage) === normalizeLanguageCode(targetLang)) {
         // Same language - use original text
         translations[targetLang] = text;
       } else {
-        // Different language - translate
-        const result = await callGoogleTranslateAPI(text, detectedLanguage, targetLang);
-        translations[targetLang] = result.translatedText;
+        // Different language - translate using OpenAI
+        const translatedText = await translateWithOpenAI(text, detectedLanguage, targetLang);
+        translations[targetLang] = translatedText;
       }
     } catch (error) {
       console.error(`Translation error for ${targetLang}:`, error);
@@ -352,6 +343,77 @@ async function translateText(text, sourceLanguage = 'auto') {
     translations,
     detectedLanguage
   };
+}
+
+// Detect language using OpenAI
+async function detectLanguageWithOpenAI(text) {
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini', // Faster and cheaper for simple tasks
+      max_tokens: 10,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: `Detect the language of this text and respond with only the ISO 639-1 language code (en for English, it for Italian, zh for Chinese). Text: "${text}"`
+        }
+      ]
+    });
+    
+    let detectedLang = response.choices[0].message.content.trim().toLowerCase();
+    
+    // Clean up the response - sometimes GPT adds extra text
+    detectedLang = detectedLang.replace(/[^a-z-]/g, '');
+    
+    // Map common variations
+    if (detectedLang.includes('en')) detectedLang = 'en';
+    if (detectedLang.includes('it')) detectedLang = 'it';
+    if (detectedLang.includes('zh') || detectedLang.includes('chi')) detectedLang = 'zh';
+    
+    console.log(`OpenAI detected language: ${detectedLang} for text: "${text}"`);
+    return detectedLang;
+  } catch (error) {
+    console.error('OpenAI language detection error:', error);
+    throw error;
+  }
+}
+
+// Translate text using OpenAI
+async function translateWithOpenAI(text, fromLang, toLang) {
+  try {
+    const languageNames = {
+      'en': 'English',
+      'it': 'Italian', 
+      'zh': 'Chinese',
+      'zh-cn': 'Chinese',
+      'zh-CN': 'Chinese'
+    };
+    
+    const fromLanguage = languageNames[fromLang] || 'English';
+    const toLanguage = languageNames[toLang] || 'English';
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 200,
+      temperature: 0.1,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a professional translator. Translate the following text from ${fromLanguage} to ${toLanguage}. Respond with ONLY the translation, no explanations, no additional text, no quotes.`
+        },
+        {
+          role: 'user',
+          content: text
+        }
+      ]
+    });
+    
+    const translation = response.choices[0].message.content.trim();
+    return translation;
+  } catch (error) {
+    console.error(`OpenAI translation error (${fromLang} → ${toLang}):`, error);
+    throw error;
+  }
 }
 
 // Normalize language codes to handle case variations and variants
@@ -378,68 +440,6 @@ function isSupportedLanguage(langCode) {
   const supportedNormalized = ['en', 'it', 'zh'];
   
   return supportedNormalized.includes(normalized);
-}
-
-// Direct Google Translate API call using HTTPS
-function callGoogleTranslateAPI(text, sourceLang, targetLang) {
-  return new Promise((resolve, reject) => {
-    const apiKey = process.env.GOOGLE_API_KEY;
-    const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
-    
-    const requestBody = {
-      q: text,
-      target: targetLang,
-      format: 'text'
-    };
-    
-    // Only specify source language if it's not auto-detect
-    if (sourceLang && sourceLang !== 'auto') {
-      requestBody.source = sourceLang;
-    }
-    
-    const postData = JSON.stringify(requestBody);
-    
-    const options = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-    
-    const req = https.request(url, options, (res) => {
-      let data = '';
-      
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-          
-          if (res.statusCode === 200 && response.data && response.data.translations) {
-            const translation = response.data.translations[0];
-            resolve({
-              translatedText: translation.translatedText,
-              detectedSourceLanguage: translation.detectedSourceLanguage
-            });
-          } else {
-            reject(new Error(`API Error: ${response.error?.message || 'Unknown error'}`));
-          }
-        } catch (parseError) {
-          reject(new Error(`Parse error: ${parseError.message}`));
-        }
-      });
-    });
-    
-    req.on('error', (error) => {
-      reject(error);
-    });
-    
-    req.write(postData);
-    req.end();
-  });
 }
 
 // REST endpoint for file upload (alternative to real-time)
