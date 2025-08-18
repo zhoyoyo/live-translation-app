@@ -28,20 +28,7 @@
         }
 
         .header {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1rem;
+            display: none;
         }
 
         .controls {
@@ -50,22 +37,25 @@
         }
 
         .language-selector {
-            margin-bottom: 30px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .language-selector label {
-            display: block;
-            margin-bottom: 8px;
             font-weight: 600;
             color: #333;
+            white-space: nowrap;
+            min-width: auto;
         }
 
         .language-selector select {
-            width: 100%;
-            padding: 12px;
+            flex: 1;
+            padding: 8px 12px;
             border: 2px solid #ddd;
-            border-radius: 10px;
-            font-size: 16px;
+            border-radius: 8px;
+            font-size: 14px;
             background: white;
         }
 
@@ -160,42 +150,60 @@
         }
 
         .timestamp {
-            font-size: 0.9rem;
-            color: #666;
-            margin-bottom: 10px;
+            font-size: 0.8rem;
+            color: #999;
+            margin-bottom: 15px;
         }
 
         .source-text {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 15px;
-            color: #333;
+            display: none;
         }
 
         .translations-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 15px;
+            margin-bottom: 15px;
         }
 
         .translation {
             background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 2px solid #f0f0f0;
+            transition: all 0.3s ease;
+        }
+
+        .translation:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
         }
 
         .translation-label {
-            font-size: 0.9rem;
-            font-weight: 600;
+            font-size: 1.1rem;
+            font-weight: 700;
             color: #667eea;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .translation-text {
-            font-size: 1rem;
+            font-size: 1.3rem;
             color: #333;
-            line-height: 1.5;
+            line-height: 1.6;
+            font-weight: 500;
+        }
+
+        .source-info {
+            text-align: center;
+            padding: 10px;
+            font-size: 0.9rem;
+            color: #666;
+            font-style: italic;
+            border-top: 1px solid #eee;
+            margin-top: 15px;
         }
 
         .empty-state {
@@ -246,15 +254,11 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🌍 Real-time Audio Translator</h1>
-            <p>Speak in English, Italian, or Chinese - Get instant translations</p>
-        </div>
-
         <div class="controls">
             <div class="language-selector">
                 <label for="sourceLanguage">Source Language:</label>
                 <select id="sourceLanguage">
+                    <option value="auto">Auto-detect</option>
                     <option value="en">English</option>
                     <option value="it">Italian</option>
                     <option value="zh">Chinese</option>
@@ -269,14 +273,6 @@
                     ⏹️ Stop Recording
                 </button>
             </div>
-
-            <div class="file-upload">
-                <h3>Or upload an audio file:</h3>
-                <input type="file" id="fileInput" accept="audio/*">
-                <button id="uploadBtn" class="btn btn-primary" disabled>
-                    📁 Upload & Translate
-                </button>
-            </div>
         </div>
 
         <div id="status" class="status">Ready to translate</div>
@@ -284,13 +280,29 @@
         <div class="translations">
             <div id="translationsList">
                 <div class="empty-state">
-                    Start recording or upload an audio file to see translations appear here
+                    Start recording to see translations in Italian, Chinese, and English appear here
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // ==============================================
+        // CONFIGURABLE AUDIO CHUNKING PARAMETERS
+        // ==============================================
+        const AUDIO_CONFIG = {
+            MAX_CHUNK_DURATION: 6000,    // Maximum chunk length in milliseconds (6 seconds)
+            SILENCE_THRESHOLD: 500,      // Silence duration to trigger chunk in milliseconds (500ms)
+            VOLUME_THRESHOLD: 15,        // Audio level threshold (0-255, higher = louder sounds required) - MUCH HIGHER
+            MIN_CHUNK_DURATION: 1000,    // Minimum chunk duration before silence detection kicks in (1 second)
+            
+            // Audio content detection thresholds
+            MIN_AVERAGE_VOLUME: 0.02,    // Minimum average audio level (0-1)
+            MIN_PEAK_VOLUME: 0.15,       // Minimum peak audio level (0-1)
+            MIN_ACTIVE_SAMPLES: 5.0      // Minimum percentage of samples above noise floor
+        };
+        // ==============================================
+
         class AudioTranslator {
             constructor() {
                 this.ws = null;
@@ -298,6 +310,13 @@
                 this.audioStream = null;
                 this.isRecording = false;
                 this.audioChunks = [];
+                this.silenceDetectionInterval = null;
+                this.lastAudioTime = 0;
+                this.maxChunkDuration = AUDIO_CONFIG.MAX_CHUNK_DURATION;
+                this.silenceThreshold = AUDIO_CONFIG.SILENCE_THRESHOLD;
+                this.volumeThreshold = AUDIO_CONFIG.VOLUME_THRESHOLD;
+                this.minChunkDuration = AUDIO_CONFIG.MIN_CHUNK_DURATION;
+                this.chunkStartTime = 0;
                 
                 this.initializeElements();
                 this.setupEventListeners();
@@ -310,17 +329,11 @@
                 this.status = document.getElementById('status');
                 this.sourceLanguageSelect = document.getElementById('sourceLanguage');
                 this.translationsList = document.getElementById('translationsList');
-                this.fileInput = document.getElementById('fileInput');
-                this.uploadBtn = document.getElementById('uploadBtn');
             }
 
             setupEventListeners() {
                 this.startBtn.addEventListener('click', () => this.startRecording());
                 this.stopBtn.addEventListener('click', () => this.stopRecording());
-                this.fileInput.addEventListener('change', (e) => {
-                    this.uploadBtn.disabled = !e.target.files[0];
-                });
-                this.uploadBtn.addEventListener('click', () => this.uploadFile());
             }
 
             connectWebSocket() {
@@ -366,6 +379,9 @@
                     });
 
                     this.audioChunks = [];
+                    this.chunkStartTime = Date.now();
+                    this.lastAudioTime = Date.now();
+
                     this.mediaRecorder.ondataavailable = (event) => {
                         this.audioChunks.push(event.data);
                     };
@@ -374,17 +390,13 @@
                         this.processAudioChunks();
                     };
 
-                    // Process audio in chunks every 3 seconds
-                    this.recordingInterval = setInterval(() => {
-                        if (this.isRecording && this.mediaRecorder.state === 'recording') {
-                            this.mediaRecorder.stop();
-                            this.mediaRecorder.start();
-                        }
-                    }, 3000);
+                    // Start recording in continuous mode
+                    this.mediaRecorder.start(100); // Small timeslices for real-time analysis
 
-                    this.mediaRecorder.start();
+                    // Set up real-time audio analysis for silence detection
+                    this.setupSilenceDetection();
+
                     this.isRecording = true;
-                    
                     this.startBtn.disabled = true;
                     this.stopBtn.disabled = false;
                     this.updateStatus('Recording...', 'recording');
@@ -395,13 +407,81 @@
                 }
             }
 
+            setupSilenceDetection() {
+                // Create audio context for real-time analysis
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.analyser = this.audioContext.createAnalyser();
+                this.analyser.fftSize = 2048;
+                
+                const source = this.audioContext.createMediaStreamSource(this.audioStream);
+                source.connect(this.analyser);
+                
+                const bufferLength = this.analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                // Monitor audio levels continuously
+                this.silenceDetectionInterval = setInterval(() => {
+                    if (!this.isRecording) return;
+                    
+                    this.analyser.getByteFrequencyData(dataArray);
+                    
+                    // Calculate average volume
+                    let sum = 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        sum += dataArray[i];
+                    }
+                    const averageVolume = sum / bufferLength;
+                    
+                    const currentTime = Date.now();
+                    const chunkDuration = currentTime - this.chunkStartTime;
+                    
+                    // Check if we have audio activity
+                    if (averageVolume > this.volumeThreshold) {
+                        this.lastAudioTime = currentTime;
+                    }
+                    
+                    const silenceDuration = currentTime - this.lastAudioTime;
+                    
+                    // Trigger chunk processing if:
+                    // 1. We've had silence for more than threshold AND we have some audio data
+                    // 2. OR we've reached the maximum chunk duration
+                    if ((silenceDuration > this.silenceThreshold && chunkDuration > this.minChunkDuration) || 
+                        chunkDuration > this.maxChunkDuration) {
+                        
+                        console.log(`Chunking: silence=${silenceDuration}ms, duration=${chunkDuration}ms, avgVol=${averageVolume.toFixed(1)}`);
+                        this.triggerChunkProcessing();
+                    }
+                }, 50); // Check every 50ms
+            }
+
+            triggerChunkProcessing() {
+                if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                    // Stop current recording to process the chunk
+                    this.mediaRecorder.stop();
+                    
+                    // Restart recording for next chunk
+                    setTimeout(() => {
+                        if (this.isRecording) {
+                            this.mediaRecorder.start(100);
+                            this.chunkStartTime = Date.now();
+                            this.lastAudioTime = Date.now();
+                        }
+                    }, 10);
+                }
+            }
+
             stopRecording() {
                 if (this.mediaRecorder && this.isRecording) {
-                    clearInterval(this.recordingInterval);
+                    clearInterval(this.silenceDetectionInterval);
+                    
                     this.mediaRecorder.stop();
                     this.audioStream.getTracks().forEach(track => track.stop());
-                    this.isRecording = false;
                     
+                    if (this.audioContext) {
+                        this.audioContext.close();
+                    }
+                    
+                    this.isRecording = false;
                     this.startBtn.disabled = false;
                     this.stopBtn.disabled = true;
                     this.updateStatus('Processing...', 'connected');
@@ -413,6 +493,20 @@
 
                 try {
                     const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                    
+                    // Check if audio has sufficient volume before sending to API
+                    if (!(await this.hasAudioContent(audioBlob))) {
+                        console.log('No significant audio detected, skipping API call');
+                        this.audioChunks = [];
+                        
+                        if (this.isRecording) {
+                            this.updateStatus('Recording...', 'recording');
+                        } else {
+                            this.updateStatus('Connected', 'connected');
+                        }
+                        return;
+                    }
+                    
                     const arrayBuffer = await audioBlob.arrayBuffer();
                     const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
@@ -438,43 +532,101 @@
                 }
             }
 
-            async uploadFile() {
-                const file = this.fileInput.files[0];
-                if (!file) return;
-
-                const formData = new FormData();
-                formData.append('audio', file);
-                formData.append('sourceLanguage', this.sourceLanguageSelect.value);
-
-                this.updateStatus('Processing file...', 'connected');
-                this.uploadBtn.disabled = true;
-
-                try {
-                    const response = await fetch('/upload-audio', {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    const result = await response.json();
-                    
-                    if (result.error) {
-                        this.displayError(result.error);
-                    } else {
-                        this.displayTranslation({
-                            timestamp: new Date().toISOString(),
-                            sourceLanguage: result.sourceLanguage,
-                            sourceText: result.sourceText,
-                            translations: result.translations
-                        });
+            // Check if audio blob contains significant audio content
+            async hasAudioContent(audioBlob) {
+                return new Promise((resolve) => {
+                    try {
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        const fileReader = new FileReader();
+                        
+                        fileReader.onload = async (e) => {
+                            try {
+                                const arrayBuffer = e.target.result;
+                                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                                
+                                // Analyze audio data for actual speech content
+                                const channelData = audioBuffer.getChannelData(0);
+                                const sampleRate = audioBuffer.sampleRate;
+                                const duration = audioBuffer.duration;
+                                
+                                // Calculate various audio metrics
+                                let sum = 0;
+                                let maxVolume = 0;
+                                let samplesAboveNoise = 0;
+                                let energySum = 0;
+                                
+                                const noiseFloor = 0.01; // Noise floor threshold
+                                const speechThreshold = 0.05; // Threshold for potential speech
+                                
+                                for (let i = 0; i < channelData.length; i++) {
+                                    const sample = Math.abs(channelData[i]);
+                                    sum += sample;
+                                    energySum += sample * sample; // Energy calculation
+                                    maxVolume = Math.max(maxVolume, sample);
+                                    
+                                    if (sample > noiseFloor) {
+                                        samplesAboveNoise++;
+                                    }
+                                }
+                                
+                                const averageVolume = sum / channelData.length;
+                                const rmsVolume = Math.sqrt(energySum / channelData.length); // RMS for better speech detection
+                                const percentageAboveNoise = (samplesAboveNoise / channelData.length) * 100;
+                                
+                                // Calculate dynamic range (difference between loudest and average)
+                                const dynamicRange = maxVolume - averageVolume;
+                                
+                                // Multi-criteria check for actual speech content
+                                const hasSignificantVolume = averageVolume > AUDIO_CONFIG.MIN_AVERAGE_VOLUME;
+                                const hasPeakVolume = maxVolume > AUDIO_CONFIG.MIN_PEAK_VOLUME;
+                                const hasActiveContent = percentageAboveNoise > AUDIO_CONFIG.MIN_ACTIVE_SAMPLES;
+                                const hasSpeechCharacteristics = rmsVolume > 0.03 && dynamicRange > 0.02;
+                                const hasMinimumDuration = duration > 0.5; // At least half a second of audio
+                                
+                                // Require multiple criteria to be met
+                                const hasContent = hasSignificantVolume && 
+                                                 hasPeakVolume && 
+                                                 hasActiveContent && 
+                                                 hasSpeechCharacteristics &&
+                                                 hasMinimumDuration;
+                                
+                                console.log(`🎵 Audio Analysis:
+                                    Duration: ${duration.toFixed(2)}s
+                                    Avg Volume: ${averageVolume.toFixed(6)} (need >${AUDIO_CONFIG.MIN_AVERAGE_VOLUME})
+                                    Peak Volume: ${maxVolume.toFixed(4)} (need >${AUDIO_CONFIG.MIN_PEAK_VOLUME})
+                                    RMS Volume: ${rmsVolume.toFixed(6)}
+                                    Active Samples: ${percentageAboveNoise.toFixed(2)}% (need >${AUDIO_CONFIG.MIN_ACTIVE_SAMPLES}%)
+                                    Dynamic Range: ${dynamicRange.toFixed(6)}
+                                    ✓ Volume: ${hasSignificantVolume}
+                                    ✓ Peak: ${hasPeakVolume}
+                                    ✓ Active: ${hasActiveContent}
+                                    ✓ Speech: ${hasSpeechCharacteristics}
+                                    ✓ Duration: ${hasMinimumDuration}
+                                    → HAS CONTENT: ${hasContent}`);
+                                
+                                audioContext.close();
+                                resolve(hasContent);
+                            } catch (error) {
+                                console.log('❌ Audio analysis failed, rejecting to prevent hallucination:', error);
+                                resolve(false);
+                            }
+                        };
+                        
+                        fileReader.onerror = () => {
+                            console.log('❌ FileReader error, rejecting to prevent hallucination');
+                            resolve(false);
+                        };
+                        
+                        fileReader.readAsArrayBuffer(audioBlob);
+                    } catch (error) {
+                        console.log('❌ Audio context creation failed, rejecting to prevent hallucination:', error);
+                        resolve(false);
                     }
-                    
-                } catch (error) {
-                    console.error('Upload error:', error);
-                    this.displayError('Failed to upload file');
-                } finally {
-                    this.updateStatus('Connected', 'connected');
-                    this.uploadBtn.disabled = false;
-                }
+                });
+            }
+
+            async uploadFile() {
+                // File upload functionality removed
             }
 
             displayTranslation(data) {
@@ -490,22 +642,37 @@
                 translationItem.className = 'translation-item';
                 
                 const timestamp = new Date(data.timestamp).toLocaleTimeString();
-                const languageNames = { 'en': 'English', 'it': 'Italian', 'zh': 'Chinese' };
+                const languageNames = { 
+                    'en': 'English', 
+                    'it': 'Italian', 
+                    'zh': 'Chinese',
+                    'zh-cn': 'Chinese',
+                    'zh-CN': 'Chinese',
+                    'zh-tw': 'Chinese',
+                    'zh-TW': 'Chinese',
+                    'auto': 'Auto-detected'
+                };
+                
+                const detectedLangName = languageNames[data.sourceLanguage] || data.sourceLanguage.toUpperCase();
                 
                 translationItem.innerHTML = 
-                    '<div class="timestamp">' + timestamp + '</div>' +
-                    '<div class="source-text">' +
-                        '<strong>' + languageNames[data.sourceLanguage] + ':</strong> ' + data.sourceText +
-                    '</div>' +
                     '<div class="translations-grid">' +
                         '<div class="translation">' +
-                            '<div class="translation-label">Italian</div>' +
+                            '<div class="translation-label">🇮🇹 Italian</div>' +
                             '<div class="translation-text">' + (data.translations.it || 'N/A') + '</div>' +
                         '</div>' +
                         '<div class="translation">' +
-                            '<div class="translation-label">Chinese</div>' +
+                            '<div class="translation-label">🇨🇳 Chinese</div>' +
                             '<div class="translation-text">' + (data.translations.zh || 'N/A') + '</div>' +
                         '</div>' +
+                        '<div class="translation">' +
+                            '<div class="translation-label">🇺🇸 English</div>' +
+                            '<div class="translation-text">' + (data.translations.en || 'N/A') + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="source-info">' +
+                        '<span>Source (' + detectedLangName + '): ' + data.sourceText + '</span>' +
+                        '<span class="timestamp">' + timestamp + '</span>' +
                     '</div>';
                 
                 translationsContainer.insertBefore(translationItem, translationsContainer.firstChild);
