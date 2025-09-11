@@ -124,11 +124,12 @@ async function transcribeAudio(filePath, language) {
       file: fs.createReadStream(filePath),
       model: 'whisper-1',
       response_format: 'text'
+      // prompt:'This audio contains speech in English, Italian, or Chinese only.'
     };
     
     // Only add language parameter if it's not 'auto'
     if (language && language !== 'auto') {
-      transcriptionParams.language = language === 'zh' ? 'zh' : language;
+      transcriptionParams.language = language;
     }
     // If language is 'auto' or not specified, Whisper will auto-detect
     
@@ -151,11 +152,13 @@ async function transcribeAudio(filePath, language) {
 // Check if transcription is valid (not a Whisper hallucination)
 function isValidTranscription(text) {
   if (!text || typeof text !== 'string') {
+    console.log("text: ",text)
+    console.log(typeof text)
     return false;
   }
   
-  const cleanText = text.trim().toLowerCase();
-  
+  const cleanText = text.trim().toLowerCase().replace(/[.,!?;:]+$/,'');
+
   // Filter out empty or very short transcriptions
   if (cleanText.length < 2) {
     console.log('Text too short:', cleanText);
@@ -166,14 +169,7 @@ function isValidTranscription(text) {
   const hasEnglish = /[a-zA-Z]/.test(cleanText);
   const hasItalian = /[a-zA-ZàáâäèéêëìíîïòóôöùúûüÀÁÂÄÈÉÊËÌÍÎÏÒÓÔÖÙÚÛÜ]/.test(cleanText);
   const hasChinese = /[\u4e00-\u9fff]/.test(cleanText);
-  
-  // Check for Japanese characters (to reject)
-  const hasJapanese = /[\u3040-\u309f\u30a0-\u30ff]/.test(cleanText);
-  if (hasJapanese) {
-    console.log('Japanese characters detected. Rejecting:', cleanText);
-    return false;
-  }
-  
+    
   // Must contain characters from at least one supported language
   if (!hasEnglish && !hasItalian && !hasChinese) {
     console.log('Text does not contain supported language characters:', cleanText);
@@ -183,19 +179,25 @@ function isValidTranscription(text) {
   // Simplified hallucination patterns - focus on the most problematic ones
   const hallucination_patterns = [
     // Single word hallucinations that are very common
-    /^bye$/i,
+    // /^bye$/i,
     /^beep$/i,
-    /^okay$/i,
-    /^ok$/i,
+    // /^okay$/i,
+    // /^ok$/i,
     /^hi$/i,
-    /^hello$/i,
-    /^yeah$/i,
-    /^yes$/i,
-    /^no$/i,
+    // /^hello$/i,
+    // /^yeah$/i,
+    // /^yes$/i,
+    // /^no$/i,
     /^um$/i,
     /^uh$/i,
     /^oh$/i,
     /^ah$/i,
+    // /^you$/i,
+    /^4K$/i,
+    /^Mm-hmm$/i,
+    /^huh$/i,
+    /^Mm$/i,
+    /^Hmm$/i,
     
     // Common two-word hallucinations
     /^okay bye$/i,
@@ -203,8 +205,10 @@ function isValidTranscription(text) {
     /^thank you$/i,
     /^you know$/i,
     /^i mean$/i,
-    /^right now$/i,
-    /^of course$/i,
+    // /^right now$/i,
+    // /^of course$/i,
+    /^thank you. bye bye$/i,
+    
     
     // Video/promotional content (the main culprits) - EXPANDED with your examples
     /if you enjoyed.*subscribe/i,
@@ -234,6 +238,7 @@ function isValidTranscription(text) {
     /post them in the comments section/i,
     /leave a comment below/i,
     /let me know in the comments/i,
+    /字幕/i,
     
     // More video ending patterns
     /that's all for today/i,
@@ -267,6 +272,14 @@ function isValidTranscription(text) {
     /caption/i,
     /subtitle/i,
     /closed caption/i,
+
+    // not sure why this also gets into it
+    // /this audio contains speech/i,
+    /Viewer discretion is advised/i,
+    /请不吝点赞/i,
+    /订阅/i,
+    /转发/i,
+    /打赏/i,
     
     // Repetitive patterns (actual noise)
     /(.)\1{4,}/,  // Same character repeated 5+ times

@@ -15,14 +15,14 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            padding: 1rem;
         }
 
         .container {
-            max-width: 1200px;
+            /* max-width: 1200px; */
             margin: 0 auto;
             background: white;
-            border-radius: 20px;
+            /* border-radius: 20px; */
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
             overflow: hidden;
         }
@@ -32,13 +32,16 @@
         }
 
         .controls {
-            padding: 30px;
-            border-bottom: 1px solid #eee;
+            padding: 1rem 2rem;
+            /* border-bottom: 1px solid #eee; */
+            display: flex;
+            justify-content: space-around;
+            /* justify-content: space-between; */
+            align-items: center;
         }
 
         .language-selector {
-            margin-bottom: 20px;
-            display: flex;
+            display: none;
             align-items: center;
             gap: 10px;
         }
@@ -51,10 +54,9 @@
         }
 
         .language-selector select {
-            flex: 1;
-            padding: 8px 12px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
+            padding: 8px 16px;
+            border-radius: 16px;
+            border: 1px solid #ccc;
             font-size: 14px;
             background: white;
         }
@@ -108,7 +110,7 @@
 
         .status {
             text-align: center;
-            padding: 20px;
+            padding: 1rem;
             font-weight: 600;
         }
 
@@ -131,16 +133,19 @@
         }
 
         .translations {
-            padding: 30px;
-            min-height: 400px;
+            padding: 1rem 2rem;
+            min-height: calc(100vh - 160px);
+        }
+
+        #translationsList {
+            height: 80vh;
+            padding-bottom: 10vh;
+            overflow-y: auto;
         }
 
         .translation-item {
             background: #f8f9fa;
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-left: 4px solid #667eea;
+            /* border-left: 4px solid #667eea; */
             animation: fadeIn 0.5s ease;
         }
 
@@ -159,25 +164,27 @@
             display: none;
         }
 
+        #label-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            background-color: #f8f9fa;
+            /* margin-left: 4px; */
+
+        }
+
         .translations-grid {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
             gap: 15px;
-            margin-bottom: 15px;
         }
 
         .translation {
             background: white;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            border: 2px solid #f0f0f0;
+            padding: 10px 20px;
+            /* box-shadow: 0 4px 15px rgba(0,0,0,0.1); */
+            border-left: 2px solid #f0f0f0;
             transition: all 0.3s ease;
-        }
-
-        .translation:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
         }
 
         .translation-label {
@@ -186,7 +193,12 @@
             color: #667eea;
             margin-bottom: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            text-align: center;
+            padding:10px 20px;
+            background:white;
+            border: 1px solid #ccc;
+            /* box-shadow: 0 4px 15px rgba(0,0,0,0.1); */
+            
         }
 
         .translation-text {
@@ -255,16 +267,6 @@
 <body>
     <div class="container">
         <div class="controls">
-            <div class="language-selector">
-                <label for="sourceLanguage">Source Language:</label>
-                <select id="sourceLanguage">
-                    <option value="auto">Auto-detect</option>
-                    <option value="en">English</option>
-                    <option value="it">Italian</option>
-                    <option value="zh">Chinese</option>
-                </select>
-            </div>
-
             <div class="recording-controls">
                 <button id="startBtn" class="btn btn-primary">
                     🎤 Start Recording
@@ -273,14 +275,31 @@
                     ⏹️ Stop Recording
                 </button>
             </div>
+            <div class="language-selector">
+                <label for="sourceLanguage">Language:</label>
+                <select id="sourceLanguage">
+                    <option value="auto">Auto-detect</option>
+                    <option value="en">English</option>
+                    <option value="it">Italiano</option>
+                    <option value="zh">中文</option>
+                </select>
+            </div>
+
+            
         </div>
 
         <div id="status" class="status">Ready to translate</div>
 
         <div class="translations">
+            <div id="label-container">
+                <div class="translation-label">🇮🇹 Italiano</div>
+                <div class="translation-label">🇨🇳 中文</div>
+                <div class="translation-label">🇺🇸 English</div>
+            </div>
+
             <div id="translationsList">
                 <div class="empty-state">
-                    Start recording to see translations in Italian, Chinese, and English appear here
+                    <!-- Start recording to see translations in Italian, Chinese, and English appear here -->
                 </div>
             </div>
         </div>
@@ -293,11 +312,11 @@
         const AUDIO_CONFIG = {
             MAX_CHUNK_DURATION: 6000,    // Maximum chunk length in milliseconds (6 seconds)
             SILENCE_THRESHOLD: 700,      // Silence duration to trigger chunk in milliseconds (700ms) - INCREASED
-            VOLUME_THRESHOLD: 15,        // Audio level threshold (0-255, higher = louder sounds required) - MUCH HIGHER
+            VOLUME_THRESHOLD: 10,        // Audio level threshold (0-255, higher = louder sounds required) - MUCH HIGHER
             MIN_CHUNK_DURATION: 1000,    // Minimum chunk duration before silence detection kicks in (1 second)
             
             // Audio content detection thresholds
-            MIN_AVERAGE_VOLUME: 0.005,    // Minimum average audio level (0-1)
+            MIN_AVERAGE_VOLUME: 0.008,    // Minimum average audio level (0-1)
             MIN_PEAK_VOLUME: 0.08,       // Minimum peak audio level (0-1)
             MIN_ACTIVE_SAMPLES: 2.0      // Minimum percentage of samples above noise floor
         };
@@ -586,28 +605,19 @@
                                 const hasPeakVolume = maxVolume > AUDIO_CONFIG.MIN_PEAK_VOLUME;
                                 const hasActiveContent = percentageAboveNoise > AUDIO_CONFIG.MIN_ACTIVE_SAMPLES;
                                 const hasSpeechCharacteristics = rmsVolume > 0.015 && dynamicRange > 0.01;
-                                const hasMinimumDuration = duration > 0.3; // At least half a second of audio
+                                const hasMinimumDuration = duration > 0.5; // At least half a second of audio
                                 
                                 // Require multiple criteria to be met
                                 const passedCriteria = [hasSignificantVolume, hasPeakVolume, hasActiveContent, hasSpeechCharacteristics, hasMinimumDuration].filter(Boolean).length;
-                                const hasContent = passedCriteria >= 3;
+                                const hasContent = (passedCriteria == 5);//passedCriteria >= 3;
                                 
                                 // Log detailed analysis when content is REJECTED
                                 if (!hasContent) {
-                                    console.log(`🔍 Audio analysis - REJECTED (${passedCriteria}/5 criteria passed, need 3):
-                                        Duration: ${duration.toFixed(2)}s
-                                        Avg Volume: ${averageVolume.toFixed(6)} (need >${AUDIO_CONFIG.MIN_AVERAGE_VOLUME}) ${hasSignificantVolume ? '✅' : '❌'}
-                                        Peak Volume: ${maxVolume.toFixed(4)} (need >${AUDIO_CONFIG.MIN_PEAK_VOLUME}) ${hasPeakVolume ? '✅' : '❌'}
-                                        RMS Volume: ${rmsVolume.toFixed(6)}
-                                        Active Samples: ${percentageAboveNoise.toFixed(2)}% (need >${AUDIO_CONFIG.MIN_ACTIVE_SAMPLES}%) ${hasActiveContent ? '✅' : '❌'}
-                                        Dynamic Range: ${dynamicRange.toFixed(6)}
-                                        Speech Characteristics: ${hasSpeechCharacteristics ? '✅' : '❌'}
-                                        Duration Check: ${hasMinimumDuration ? '✅' : '❌'}
-                                        → REASON: ${!hasSignificantVolume ? 'Low average volume' : 
-                                                   !hasPeakVolume ? 'Low peak volume' : 
-                                                   !hasActiveContent ? 'Not enough active samples' : 
-                                                   !hasSpeechCharacteristics ? 'No speech characteristics' : 
-                                                   !hasMinimumDuration ? 'Too short duration' : 'Unknown'}`);
+                                    console.log("hasSignificantVolume:", hasSignificantVolume, 
+                                    'hasPeakVolume: ', hasPeakVolume, 
+                                    "hasActiveContent: ", hasActiveContent, 
+                                    "hasSpeechCharacteristics:",hasSpeechCharacteristics,
+                                    "hasMinimumDuration:", hasMinimumDuration)
                                 }
                                 
                                 audioContext.close();
@@ -664,30 +674,42 @@
                 translationItem.innerHTML = 
                     '<div class="translations-grid">' +
                         '<div class="translation">' +
-                            '<div class="translation-label">🇮🇹 Italian</div>' +
+                            // '<div class="translation-label">🇮🇹 Italiano</div>' +
                             '<div class="translation-text">' + (data.translations.it || 'N/A') + '</div>' +
                         '</div>' +
                         '<div class="translation">' +
-                            '<div class="translation-label">🇨🇳 Chinese</div>' +
+                            // '<div class="translation-label">🇨🇳 中文</div>' +
                             '<div class="translation-text">' + (data.translations.zh || 'N/A') + '</div>' +
                         '</div>' +
                         '<div class="translation">' +
-                            '<div class="translation-label">🇺🇸 English</div>' +
+                            // '<div class="translation-label">🇺🇸 English</div>' +
                             '<div class="translation-text">' + (data.translations.en || 'N/A') + '</div>' +
                         '</div>' +
-                    '</div>' +
-                    '<div class="source-info">' +
-                        '<span>Source (' + detectedLangName + '): ' + data.sourceText + '</span>' +
-                        '<span class="timestamp">' + timestamp + '</span>' +
-                    '</div>';
+                    '</div>' 
+                    // +
+                    // '<div class="source-info">' +
+                    //     '<span>Source (' + detectedLangName + '): ' + data.sourceText + '</span>' +
+                    //     '<span class="timestamp">' + timestamp + '</span>' +
+                    // '</div>';
+                translationsContainer.appendChild(translationItem)
                 
-                translationsContainer.insertBefore(translationItem, translationsContainer.firstChild);
+                function scrollToBottom(container) {
+                    container.scrollTo({
+                        top: container.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }
+
+                scrollToBottom(translationsContainer);
+
+
+                // translationsContainer.insertBefore(translationItem, translationsContainer.firstChild);
                 
                 // Keep only last 20 translations
                 const items = translationsContainer.querySelectorAll('.translation-item');
-                if (items.length > 20) {
-                    items[items.length - 1].remove();
-                }
+                // if (items.length > 20) {
+                //     items[items.length - 1].remove();
+                // }
             }
 
             displayError(message) {
@@ -712,6 +734,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             new AudioTranslator();
         });
+
     </script>
 </body>
 </html>
