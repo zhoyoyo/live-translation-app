@@ -603,13 +603,13 @@
             // Check if audio blob contains significant audio content
             async hasAudioContent(audioBlob) {
                 // Skip complex analysis on mobile - just check blob size
-                if (this.isMobile){
-                    if (audioBlob.size < 1000) { // Less than 1KB is likely empty
-                        console.log('Audio blob too small:', audioBlob.size);
-                        return false;
-                    }
-                    return true; // Accept all non-tiny audio blobs on mobile
-                }
+                // if (this.isMobile){
+                //     if (audioBlob.size < 1000) { // Less than 1KB is likely empty
+                //         console.log('Audio blob too small:', audioBlob.size);
+                //         return false;
+                //     }
+                //     return true; // Accept all non-tiny audio blobs on mobile
+                // }
     
                 return new Promise((resolve) => {
                     try {
