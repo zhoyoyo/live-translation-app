@@ -348,9 +348,19 @@
         };
         // ==============================================
 
-        const isMobile = function(){
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        }   
+        // Safe base64 conversion for large files
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            const chunkSize = 8192; // Process in 8KB chunks
+            
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                const chunk = bytes.slice(i, i + chunkSize);
+                binary += String.fromCharCode.apply(null, chunk);
+            }
+            
+            return btoa(binary);
+        }
 
         class AudioTranslator {
             constructor() {
@@ -454,6 +464,10 @@
                     console.error('Error starting recording:', error);
                     this.displayError('Failed to access microphone');
                 }
+            }
+
+            isMobile() {
+                return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             }
 
             setupSilenceDetection() {
@@ -561,7 +575,7 @@
                     console.log('🎵 Audio content detected, proceeding with Whisper API call');
                     
                     const arrayBuffer = await audioBlob.arrayBuffer();
-                    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+                    const base64Audio = this.isMobile ?  arrayBufferToBase64(arrayBuffer) : (String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
                     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                         console.log('📤 Sending audio to server for Whisper processing...');
@@ -589,7 +603,7 @@
             // Check if audio blob contains significant audio content
             async hasAudioContent(audioBlob) {
                 // Skip complex analysis on mobile - just check blob size
-                if (isMobile){
+                if (this.isMobile){
                     if (audioBlob.size < 1000) { // Less than 1KB is likely empty
                         console.log('Audio blob too small:', audioBlob.size);
                         return false;
