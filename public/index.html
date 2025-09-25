@@ -348,6 +348,10 @@
         };
         // ==============================================
 
+        const isMobile = function(){
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }   
+
         class AudioTranslator {
             constructor() {
                 this.ws = null;
@@ -409,26 +413,7 @@
             }
 
             async startRecording() {
-                
                 try {
-
-                    // Safari compatibility check
-                    if (!navigator.mediaDevices) {
-                        throw new Error('MediaDevices API not supported');
-                    }
-                    
-                    if (!navigator.mediaDevices.getUserMedia) {
-                        // Fallback for older Safari versions
-                        navigator.mediaDevices.getUserMedia = navigator.getUserMedia ||
-                            navigator.webkitGetUserMedia ||
-                            navigator.mozGetUserMedia ||
-                            navigator.msGetUserMedia;
-                    }
-
-                    if (!navigator.mediaDevices.getUserMedia) {
-                        throw new Error('getUserMedia not supported on this browser');
-                    }
-
                     this.audioStream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
                             sampleRate: 16000,
@@ -603,6 +588,15 @@
 
             // Check if audio blob contains significant audio content
             async hasAudioContent(audioBlob) {
+                // Skip complex analysis on mobile - just check blob size
+                if (isMobile){
+                    if (audioBlob.size < 1000) { // Less than 1KB is likely empty
+                        console.log('Audio blob too small:', audioBlob.size);
+                        return false;
+                    }
+                    return true; // Accept all non-tiny audio blobs on mobile
+                }
+    
                 return new Promise((resolve) => {
                     try {
                         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
