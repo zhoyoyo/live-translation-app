@@ -245,21 +245,47 @@
         }
 
         @media (max-width: 768px) {
-            .translations-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .recording-controls {
-                flex-direction: column;
-            }
-            
             .btn {
                 width: 100%;
                 justify-content: center;
+            }
+        }
+
+        @media (max-width: 500px) {
+            .translation-label {
+                font-size: 0.85rem;
+                padding: 8px;
+            }
+            .translations {
+                padding: 10px;
+            }
+            .controls {
+                padding: 10px;
+            }
+            .btn {
+                padding: 0.8rem 1rem;
+                font-size: 15px;
+                width: 45vw;
+            }
+            .recording-controls {
+                flex-direction: row;
+            }
+            .translation {
+                padding:5px;
+            }
+            .translation-text {
+                font-size: 1rem;
+            }
+            .translations-grid {
+                gap:10px;
+                grid-template-columns: 1fr 1fr;
+            }
+            #label-container {
+                gap: 10px;
+                grid-template-columns: 1fr 1fr;
+            }
+            .translation-label:nth-child(3),.translation:nth-child(3) {
+                display: none;
             }
         }
     </style>
