@@ -409,7 +409,26 @@
             }
 
             async startRecording() {
+                
                 try {
+
+                    // Safari compatibility check
+                    if (!navigator.mediaDevices) {
+                        throw new Error('MediaDevices API not supported');
+                    }
+                    
+                    if (!navigator.mediaDevices.getUserMedia) {
+                        // Fallback for older Safari versions
+                        navigator.mediaDevices.getUserMedia = navigator.getUserMedia ||
+                            navigator.webkitGetUserMedia ||
+                            navigator.mozGetUserMedia ||
+                            navigator.msGetUserMedia;
+                    }
+
+                    if (!navigator.mediaDevices.getUserMedia) {
+                        throw new Error('getUserMedia not supported on this browser');
+                    }
+
                     this.audioStream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
                             sampleRate: 16000,
